@@ -1,24 +1,75 @@
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
-    <meta charset="UTF-8">
-    <title>Angelica - Diagnóstico Final</title>
+    <meta charset="UTF-8" />
+    <title>Angelica - Avatar com Memória</title>
     <style>
-        body { background: #121212; color: white; text-align: center; font-family: sans-serif; padding-top: 50px; }
-        #video-wrapper { width: 350px; height: 350px; margin: 0 auto; border-radius: 50%; border: 4px solid #007bff; overflow: hidden; background: #000; box-shadow: 0 0 20px #007bff; }
-        video { width: 100%; height: 100%; object-fit: cover; }
-        button { padding: 15px 30px; margin: 15px; border-radius: 10px; border: none; cursor: pointer; font-weight: bold; font-size: 16px; }
-        .btn-on { background: #28a745; color: white; }
-        .btn-talk { background: #007bff; color: white; }
-        #status { color: #00ff00; margin-top: 20px; font-weight: bold; background: #222; padding: 10px; display: inline-block; border-radius: 5px; }
+        body {
+            background: #121212;
+            color: white;
+            text-align: center;
+            font-family: sans-serif;
+            padding-top: 50px;
+        }
+
+        #video-wrapper {
+            width: 350px;
+            height: 350px;
+            margin: 0 auto;
+            border-radius: 50%;
+            border: 4px solid #007bff;
+            overflow: hidden;
+            background: #000;
+            box-shadow: 0 0 20px #007bff;
+        }
+
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        button {
+            padding: 15px 30px;
+            margin: 15px;
+            border-radius: 10px;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 16px;
+        }
+
+        .btn-on {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-talk {
+            background: #007bff;
+            color: white;
+        }
+
+        #status {
+            color: #00ff00;
+            margin-top: 20px;
+            font-weight: bold;
+            background: #222;
+            padding: 10px;
+            display: inline-block;
+            border-radius: 5px;
+            min-width: 280px;
+        }
     </style>
 </head>
 <body>
     <h1>Agente Virtual: Angelica</h1>
+
     <div id="video-wrapper">
         <video id="agent-video" autoplay playsinline></video>
     </div>
+
     <br>
+
     <button class="btn-on" id="btnConnect">1. Ligar Angelica</button>
     <button class="btn-talk" id="btnTalk">2. Conversar</button>
 
@@ -29,15 +80,23 @@
     <script type="module">
         import * as did from "https://cdn.jsdelivr.net/npm/@d-id/client-sdk/+esm";
 
-        // CONFIGURAÇÕES OFICIAIS REVISADAS
+        // =========================
+        // CONFIG D-ID
+        // =========================
         const agentId = "v2_agt_L7Kz9jzF";
         const auth = {
             type: "key",
             clientKey: "Z29vZ2xlLW9hdXRoMnwxMDE1NjQwNTk3MTQxODc2NDEwNDY6SUt3bTJJV3JxZmVSQ3lldDY4Ujdl"
         };
 
+        // =========================
+        // CONFIG BACKEND
+        // =========================
+        const backendUrl = "https://tammie-snarly-petrina.ngrok-free.dev/chat";
+
         const videoElement = document.getElementById("agent-video");
         const statusLabel = document.getElementById("status");
+
         let agent = null;
         let srcObject = null;
 
@@ -48,13 +107,27 @@
                 videoElement.srcObject = value;
                 statusLabel.innerText = "ANGELICA ONLINE!";
             },
+
             onConnectionStateChange(state) {
                 console.log("Estado da conexão:", state);
                 statusLabel.innerText = "Conexão: " + state;
             },
+
+            onVideoStateChange(state) {
+                console.log("Estado do vídeo:", state);
+
+                if (state === "STOP" && agent?.agent?.presenter?.idle_video) {
+                    videoElement.srcObject = undefined;
+                    videoElement.src = agent.agent.presenter.idle_video;
+                } else if (srcObject) {
+                    videoElement.src = "";
+                    videoElement.srcObject = srcObject;
+                }
+            },
+
             onError(error, errorData) {
                 console.error("ERRO D-ID:", error, errorData);
-                statusLabel.innerText = "ERRO: " + (error?.message || error);
+                statusLabel.innerText = "ERRO D-ID: " + (error?.message || error || "desconhecido");
             }
         };
 
@@ -63,10 +136,29 @@
                 agent = await did.createAgentManager(agentId, {
                     auth,
                     callbacks,
-                    streamOptions: { compatibilityMode: "auto", streamWarmup: true }
+                    streamOptions: {
+                        compatibilityMode: "auto",
+                        streamWarmup: true
+                    }
                 });
             }
             return agent;
+        }
+
+        async function falarResposta(texto) {
+            const a = await initAgent();
+
+            // Usa speak para a D-ID apenas falar o texto vindo do Python
+            if (typeof a.speak === "function") {
+                await a.speak({
+                    type: "text",
+                    input: texto
+                });
+                return;
+            }
+
+            // fallback
+            await a.chat(texto);
         }
 
         document.getElementById("btnConnect").addEventListener("click", async () => {
@@ -74,39 +166,68 @@
                 statusLabel.innerText = "Conectando...";
                 const a = await initAgent();
                 await a.connect();
+                statusLabel.innerText = "Conectada com sucesso.";
             } catch (err) {
                 console.error("Falha fatal:", err);
-                statusLabel.innerText = "FALHA TÉCNICA: " + (err?.message || "Erro de Fetch");
+                statusLabel.innerText = "FALHA TÉCNICA: " + (err?.message || "Erro de conexão");
             }
         });
 
         document.getElementById("btnTalk").addEventListener("click", async () => {
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
             if (!SpeechRecognition) {
-                statusLabel.innerText = "Navegador sem suporte a voz.";
+                statusLabel.innerText = "Seu navegador não suporta reconhecimento de voz.";
                 return;
             }
 
             const recognition = new SpeechRecognition();
             recognition.lang = "pt-BR";
+            recognition.interimResults = false;
+            recognition.maxAlternatives = 1;
+
+            recognition.onstart = () => {
+                statusLabel.innerText = "Estou ouvindo...";
+            };
+
+            recognition.onerror = (event) => {
+                console.error("Erro no reconhecimento de voz:", event);
+                statusLabel.innerText = "Erro no microfone: " + event.error;
+            };
+
             recognition.onresult = async (event) => {
                 const text = event.results[0][0].transcript;
                 statusLabel.innerText = "Você: " + text;
 
                 try {
-                    const res = await fetch("https://tammie-snarly-petrina.ngrok-free.dev/chat", {
+                    const res = await fetch(backendUrl, {
                         method: "POST",
-                        headers: { "Content-Type": "application/json" },
+                        headers: {
+                            "Content-Type": "application/json"
+                        },
                         body: JSON.stringify({ message: text })
                     });
+
+                    if (!res.ok) {
+                        throw new Error("Backend respondeu HTTP " + res.status);
+                    }
+
                     const gpt = await res.json();
-                    const a = await initAgent();
-                    await a.chat(gpt.response);
-                    statusLabel.innerText = "Respondendo...";
+                    console.log("Resposta do backend:", gpt);
+
+                    if (!gpt.response) {
+                        throw new Error("Backend não retornou 'response'");
+                    }
+
+                    statusLabel.innerText = "Angélica está respondendo...";
+                    await falarResposta(gpt.response);
+                    statusLabel.innerText = "Pronta para a próxima pergunta.";
                 } catch (e) {
-                    statusLabel.innerText = "Erro no servidor local.";
+                    console.error("Erro no backend:", e);
+                    statusLabel.innerText = "Erro no servidor local: " + (e?.message || e);
                 }
             };
+
             recognition.start();
         });
     </script>
