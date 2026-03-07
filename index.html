@@ -24,6 +24,7 @@
     <div id="status">Status: Desconectada</div>
 
     <script type="module">
+        // Importa o SDK oficial da D-ID
         import * as did from "https://cdn.jsdelivr.net/npm/@d-id/client-sdk/+esm";
 
         const agentId = "v2_agt_L7Kz9jzF";
@@ -46,12 +47,13 @@
             },
             onError(error, errorData) {
                 console.error("D-ID ERROR:", error, errorData);
-                statusLabel.innerText = "Erro: " + error;
+                statusLabel.innerText = "Erro D-ID: " + error;
             }
         };
 
         async function initAgent() {
             if (!agent) {
+                // Cria o gerenciador do agente usando o fluxo oficial
                 agent = await did.createAgentManager(agentId, { auth, callbacks });
             }
             return agent;
@@ -63,7 +65,8 @@
                 const a = await initAgent();
                 await a.connect();
             } catch (err) {
-                statusLabel.innerText = "Erro ao conectar: " + err.message;
+                statusLabel.innerText = "Falha na conexão. Verifique o domínio no D-ID.";
+                console.error(err);
             }
         });
 
@@ -74,10 +77,10 @@
 
             recognition.onresult = async (event) => {
                 const text = event.results[0][0].transcript;
-                statusLabel.innerText = "Você disse: " + text;
+                statusLabel.innerText = "Processando sua fala...";
 
                 try {
-                    // Chama seu Python local via ngrok
+                    // Envia para o seu Python via ngrok
                     const res = await fetch('https://tammie-snarly-petrina.ngrok-free.dev/chat', {
                         method: 'POST',
                         headers: {'Content-Type': 'application/json'},
@@ -85,12 +88,12 @@
                     });
                     const gpt = await res.json();
 
-                    // Faz a Angelica falar a resposta do seu Python
+                    // O SDK faz a Angelica falar a resposta
                     const a = await initAgent();
                     await a.chat(gpt.response);
                     statusLabel.innerText = "Angelica respondendo...";
                 } catch (e) {
-                    statusLabel.innerText = "Erro ao falar com servidor local.";
+                    statusLabel.innerText = "Erro: Servidor local não respondeu.";
                 }
             };
             recognition.start();
