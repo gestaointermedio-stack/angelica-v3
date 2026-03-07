@@ -2,7 +2,7 @@
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <title>Angelica - Diagnóstico Real</title>
+    <title>Angelica - Diagnóstico Final</title>
     <style>
         body { background: #121212; color: white; text-align: center; font-family: sans-serif; padding-top: 50px; }
         #video-wrapper { width: 350px; height: 350px; margin: 0 auto; border-radius: 50%; border: 4px solid #007bff; overflow: hidden; background: #000; box-shadow: 0 0 20px #007bff; }
@@ -21,7 +21,7 @@
     <br>
     <button class="btn-on" id="btnConnect">1. Ligar Angelica</button>
     <button class="btn-talk" id="btnTalk">2. Conversar</button>
-    
+
     <div style="margin-top: 20px;">
         <div id="status">Status: Aguardando comando...</div>
     </div>
@@ -29,71 +29,82 @@
     <script type="module">
         import * as did from "https://cdn.jsdelivr.net/npm/@d-id/client-sdk/+esm";
 
+        // CONFIGURAÇÕES OFICIAIS REVISADAS
         const agentId = "v2_agt_L7Kz9jzF";
         const auth = {
             type: "key",
-            clientKey: "Z29vZ2xlLW9hdXRoMnwxMDE1NjQwNTk3MTQxODc2NDEwNDY6SUt3bTJJV3pxZmVSQ3lldDY4Ujdl"
+            clientKey: "Z29vZ2xlLW9hdXRoMnwxMDE1NjQwNTk3MTQxODc2NDEwNDY6SUt3bTJJV3JxZmVSQ3lldDY4Ujdl"
         };
 
         const videoElement = document.getElementById("agent-video");
         const statusLabel = document.getElementById("status");
         let agent = null;
+        let srcObject = null;
 
         const callbacks = {
             onSrcObjectReady(value) {
+                console.log("Mídia pronta:", value);
+                srcObject = value;
                 videoElement.srcObject = value;
                 statusLabel.innerText = "ANGELICA ONLINE!";
             },
             onConnectionStateChange(state) {
+                console.log("Estado da conexão:", state);
                 statusLabel.innerText = "Conexão: " + state;
             },
             onError(error, errorData) {
-                console.error("D-ID ERROR:", error, errorData);
-                // AQUI EXIBIMOS O ERRO REAL NA TELA
-                statusLabel.innerText = "ERRO D-ID: " + (error.message || error);
+                console.error("ERRO D-ID:", error, errorData);
+                statusLabel.innerText = "ERRO: " + (error?.message || error);
             }
         };
 
         async function initAgent() {
             if (!agent) {
-                agent = await did.createAgentManager(agentId, { auth, callbacks });
+                agent = await did.createAgentManager(agentId, {
+                    auth,
+                    callbacks,
+                    streamOptions: { compatibilityMode: "auto", streamWarmup: true }
+                });
             }
             return agent;
         }
 
         document.getElementById("btnConnect").addEventListener("click", async () => {
             try {
-                statusLabel.innerText = "Iniciando conexão...";
+                statusLabel.innerText = "Conectando...";
                 const a = await initAgent();
                 await a.connect();
             } catch (err) {
-                // Se falhar, mostra o erro técnico para a gente ler
-                statusLabel.innerText = "FALHA TÉCNICA: " + err.message;
-                console.dir(err);
+                console.error("Falha fatal:", err);
+                statusLabel.innerText = "FALHA TÉCNICA: " + (err?.message || "Erro de Fetch");
             }
         });
 
         document.getElementById("btnTalk").addEventListener("click", async () => {
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-            const recognition = new SpeechRecognition();
-            recognition.lang = 'pt-BR';
+            if (!SpeechRecognition) {
+                statusLabel.innerText = "Navegador sem suporte a voz.";
+                return;
+            }
 
+            const recognition = new SpeechRecognition();
+            recognition.lang = "pt-BR";
             recognition.onresult = async (event) => {
                 const text = event.results[0][0].transcript;
                 statusLabel.innerText = "Você: " + text;
 
                 try {
-                    const res = await fetch('https://tammie-snarly-petrina.ngrok-free.dev/chat', {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
+                    const res = await fetch("https://tammie-snarly-petrina.ngrok-free.dev/chat", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({ message: text })
                     });
                     const gpt = await res.json();
-
                     const a = await initAgent();
                     await a.chat(gpt.response);
+                    statusLabel.innerText = "Respondendo...";
                 } catch (e) {
-                    statusLabel.innerText = "Erro no Servidor Local (ngrok)";
+                    statusLabel.innerText = "Erro no servidor local.";
                 }
             };
             recognition.start();
