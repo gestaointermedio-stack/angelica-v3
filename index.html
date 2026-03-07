@@ -27,12 +27,13 @@
 
     <script>
         const AGENT_ID = "v2_agt_L7Kz9jzF";
-        const CLIENT_KEY = "Z29vZ2xlLW9hdXRoMnw1MDEwRjE2NjQwNTk3MTQxODc2NDExNDY2SUt3bTJKV3pxZmVSe3lldDk4UjdkbA==";
+        const CLIENT_KEY = "Z29vZ2xlLW9hdXRoMnw1MDEwRjE2NjQwNTk3MTQxODc2NDExNDY2SUt3bTJKV3pxZmVSeWV0OThSN2Rs";
 
         let pc, streamId, sessionId;
 
         async function connect() {
-            document.getElementById('status').innerText = "Conectando...";
+            const statusLabel = document.getElementById('status');
+            statusLabel.innerText = "Conectando...";
             try {
                 const response = await fetch(`https://api.d-id.com/agents/${AGENT_ID}/streams`, {
                     method: "POST",
@@ -44,7 +45,7 @@
 
                 if (!response.ok) {
                     const errorDetail = await response.json();
-                    throw new Error(errorDetail.description || "Erro na API");
+                    throw new Error(errorDetail.description || "Erro na API do D-ID");
                 }
 
                 const data = await response.json();
@@ -54,9 +55,11 @@
                 pc = new RTCPeerConnection({ iceServers: data.ice_servers });
                 
                 pc.ontrack = (event) => {
-                    document.getElementById('avatarVideo').srcObject = event.streams[0];
-                    document.getElementById('status').innerText = "Angelica Online!";
-                    document.getElementById('talkBtn').disabled = false;
+                    if (event.track.kind === 'video') {
+                        document.getElementById('avatarVideo').srcObject = event.streams[0];
+                        statusLabel.innerText = "Angelica Online!";
+                        document.getElementById('talkBtn').disabled = false;
+                    }
                 };
 
                 await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
@@ -73,18 +76,19 @@
                 });
 
             } catch (err) {
-                document.getElementById('status').innerText = "Erro: " + err.message;
+                statusLabel.innerText = "Erro: " + err.message;
                 console.error(err);
             }
         }
 
         async function startTalking() {
-            const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            const recognition = new SpeechRecognition();
             recognition.lang = 'pt-BR';
 
             recognition.onresult = async (event) => {
                 const text = event.results[0][0].transcript;
-                document.getElementById('status').innerText = "Você: " + text;
+                document.getElementById('status').innerText = "Processando: " + text;
 
                 try {
                     const res = await fetch('https://tammie-snarly-petrina.ngrok-free.dev/chat', {
@@ -92,6 +96,7 @@
                         headers: {'Content-Type': 'application/json'},
                         body: JSON.stringify({ message: text })
                     });
+                    
                     const gpt = await res.json();
 
                     await fetch(`https://api.d-id.com/agents/${AGENT_ID}/streams/${streamId}`, {
@@ -109,8 +114,9 @@
                             session_id: sessionId
                         })
                     });
+                    document.getElementById('status').innerText = "Angelica respondendo...";
                 } catch (e) {
-                    document.getElementById('status').innerText = "Erro ao processar fala.";
+                    document.getElementById('status').innerText = "Erro na conexão com o servidor local.";
                 }
             };
             recognition.start();
@@ -118,4 +124,3 @@
     </script>
 </body>
 </html>
-
