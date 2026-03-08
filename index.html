@@ -135,12 +135,14 @@
         const textInput = document.getElementById("textInput");
         const btnSendText = document.getElementById("btnSendText");
         const btnTalk = document.getElementById("btnTalk");
+        const btnConnect = document.getElementById("btnConnect");
 
         let agent = null;
         let srcObject = null;
         let isSpeaking = false;
         let isSending = false;
         let isConnecting = false;
+        let isConnected = false;
 
         const callbacks = {
             onSrcObjectReady(value) {
@@ -153,6 +155,13 @@
             onConnectionStateChange(state) {
                 console.log("Estado da conexão:", state);
                 statusLabel.innerText = "Conexão: " + state;
+
+                const s = String(state || "").toLowerCase();
+                isConnected = (
+                    s.includes("connected") ||
+                    s.includes("open") ||
+                    s.includes("streaming")
+                );
             },
 
             onVideoStateChange(state) {
@@ -178,19 +187,7 @@
             return txt.includes("missing or invalid session_id") || txt.includes("sessionerror");
         }
 
-        async function initAgent(forceNew = false) {
-            if (forceNew) {
-                try {
-                    if (agent && typeof agent.disconnect === "function") {
-                        await agent.disconnect();
-                    }
-                } catch (e) {
-                    console.warn("Falha ao desconectar agente antigo:", e);
-                }
-                agent = null;
-                srcObject = null;
-            }
-
+        async function initAgent() {
             if (!agent) {
                 agent = await did.createAgentManager(agentId, {
                     auth,
@@ -201,43 +198,74 @@
                     }
                 });
             }
-
             return agent;
         }
 
-        async function ensureConnected(forceReconnect = false) {
-            if (isConnecting) return agent;
-
+        async function connectAgent() {
+            if (isConnecting) return;
             isConnecting = true;
+
             try {
-                const a = await initAgent(forceReconnect);
+                statusLabel.innerText = "Conectando...";
+                const a = await initAgent();
                 await a.connect();
-                return a;
+                isConnected = true;
+                statusLabel.innerText = "Conectada com sucesso.";
+            } catch (err) {
+                console.error("Falha ao conectar:", err);
+                statusLabel.innerText = "FALHA TÉCNICA: " + (err?.message || "Erro de conexão");
+                throw err;
             } finally {
                 isConnecting = false;
             }
         }
 
-        async function reconnectAgent() {
-            statusLabel.innerText = "Reconectando sessão da Angélica...";
-            return await ensureConnected(true);
+        async function reconnectAgentAfterSessionError() {
+            try {
+                statusLabel.innerText = "Reconectando sessão da Angélica...";
+
+                if (!agent) {
+                    await connectAgent();
+                    return;
+                }
+
+                try {
+                    if (typeof agent.disconnect === "function") {
+                        await agent.disconnect();
+                    }
+                } catch (e) {
+                    console.warn("Falha ao desconectar sessão antiga:", e);
+                }
+
+                isConnected = false;
+                await agent.connect();
+                isConnected = true;
+                statusLabel.innerText = "Sessão restabelecida.";
+            } catch (err) {
+                console.error("Falha na reconexão:", err);
+                statusLabel.innerText = "Erro ao reconectar a sessão.";
+                throw err;
+            }
         }
 
         async function falarResposta(texto) {
+            if (!agent || !isConnected) {
+                throw new Error("Avatar não conectado. Clique em Ligar Angelica primeiro.");
+            }
+
             let ultimaFalha = null;
 
             for (let tentativa = 1; tentativa <= 2; tentativa++) {
                 try {
-                    const a = await ensureConnected(tentativa > 1);
                     isSpeaking = true;
 
-                    if (typeof a.speak === "function") {
-                        await a.speak({
+                    if (typeof agent.speak === "function") {
+                        await agent.speak({
                             type: "text",
                             input: texto
                         });
                     } else {
-                        await a.chat(texto);
+                        await agent.chat(texto);
                     }
 
                     isSpeaking = false;
@@ -248,7 +276,7 @@
                     console.error("Erro ao falar resposta:", err);
 
                     if (isSessionError(err) && tentativa < 2) {
-                        await reconnectAgent();
+                        await reconnectAgentAfterSessionError();
                         continue;
                     }
 
@@ -262,6 +290,11 @@
         async function enviarMensagem(message) {
             const text = (message || "").trim();
             if (!text || isSending) return;
+
+            if (!agent || !isConnected) {
+                statusLabel.innerText = "Clique em Ligar Angelica antes de conversar.";
+                return;
+            }
 
             isSending = true;
 
@@ -299,14 +332,11 @@
             }
         }
 
-        document.getElementById("btnConnect").addEventListener("click", async () => {
+        btnConnect.addEventListener("click", async () => {
             try {
-                statusLabel.innerText = "Conectando...";
-                await ensureConnected(false);
-                statusLabel.innerText = "Conectada com sucesso.";
+                await connectAgent();
             } catch (err) {
                 console.error("Falha fatal:", err);
-                statusLabel.innerText = "FALHA TÉCNICA: " + (err?.message || "Erro de conexão");
             }
         });
 
@@ -315,6 +345,11 @@
 
             if (!SpeechRecognition) {
                 statusLabel.innerText = "Seu navegador não suporta reconhecimento de voz.";
+                return;
+            }
+
+            if (!agent || !isConnected) {
+                statusLabel.innerText = "Clique em Ligar Angelica antes de conversar.";
                 return;
             }
 
