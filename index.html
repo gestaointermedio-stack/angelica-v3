@@ -54,6 +54,8 @@
             width: 100%;
             height: 100%;
             object-fit: cover;
+            transform: scale(1.22);
+            transform-origin: center 34%;
         }
 
         .topbar-info {
@@ -333,18 +335,12 @@
     <script type="module">
         import * as did from "https://cdn.jsdelivr.net/npm/@d-id/client-sdk/+esm";
 
-        // =========================
-        // CONFIG D-ID
-        // =========================
         const agentId = "v2_agt_L7Kz9jzF";
         const auth = {
             type: "key",
             clientKey: "Z29vZ2xlLW9hdXRoMnwxMDE1NjQwNTk3MTQxODc2NDEwNDY6SUt3bTJJV3JxZmVSQ3lldDY4Ujdl"
         };
 
-        // =========================
-        // CONFIG BACKEND
-        // =========================
         const backendUrl = "https://tammie-snarly-petrina.ngrok-free.dev/chat";
 
         const videoElement = document.getElementById("agent-video");
@@ -418,7 +414,6 @@
                         ${v.km ? `<div class="vehicle-line">KM: ${escapeHtml(v.km)}</div>` : ""}
                         ${v.cambio ? `<div class="vehicle-line">Câmbio: ${escapeHtml(v.cambio)}</div>` : ""}
                         ${v.combustivel ? `<div class="vehicle-line">Combustível: ${escapeHtml(v.combustivel)}</div>` : ""}
-                        ${v.categoria ? `<div class="vehicle-line">Categoria: ${escapeHtml(v.categoria)}</div>` : ""}
                         ${v.link ? `<a class="vehicle-link" href="${v.link}" target="_blank" rel="noopener noreferrer">Ver veículo</a>` : ""}
                     `;
 
