@@ -120,6 +120,7 @@
             padding: 12px 14px;
             font-weight: bold;
             cursor: pointer;
+            transition: 0.2s ease;
         }
 
         .btn-on {
@@ -127,13 +128,12 @@
             color: white;
         }
 
-        .btn-talk {
-            background: #007bff;
-            color: white;
+        .btn-on.connected {
+            background: #dc3545;
         }
 
-        .btn-send {
-            background: #ff9800;
+        .btn-talk {
+            background: #007bff;
             color: white;
         }
 
@@ -253,8 +253,8 @@
             flex: 1;
             border: none;
             outline: none;
-            border-radius: 10px;
-            padding: 13px 14px;
+            border-radius: 999px;
+            padding: 13px 16px;
             background: #2a3942;
             color: white;
             font-size: 15px;
@@ -262,6 +262,26 @@
 
         #textInput::placeholder {
             color: #8696a0;
+        }
+
+        .btn-send {
+            width: 44px;
+            height: 44px;
+            min-width: 44px;
+            border: none;
+            border-radius: 50%;
+            background: #00a884;
+            color: white;
+            cursor: pointer;
+            font-size: 18px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+        }
+
+        .btn-send:hover {
+            filter: brightness(1.05);
         }
 
         .status-inline {
@@ -345,7 +365,7 @@
                     id="textInput"
                     placeholder="Digite sua mensagem ou a placa do veículo"
                 />
-                <button class="btn-send" id="btnSendText">Enviar</button>
+                <button class="btn-send" id="btnSendText" aria-label="Enviar">➤</button>
             </div>
             <div class="status-inline" id="status">Status: Aguardando comando...</div>
         </div>
@@ -380,6 +400,16 @@
         let isConnecting = false;
         let isConnected = false;
         let isMuted = false;
+
+        function updateConnectButton() {
+            if (isConnected) {
+                btnConnect.textContent = "Desligar";
+                btnConnect.classList.add("connected");
+            } else {
+                btnConnect.textContent = "1. Ligar Angélica";
+                btnConnect.classList.remove("connected");
+            }
+        }
 
         function setStatus(text) {
             statusLabel.innerText = "Status: " + text;
@@ -459,8 +489,6 @@
 
                 videoElement.srcObject = value;
                 videoMini.srcObject = value;
-
-                setStatus("Angélica online");
             },
 
             onConnectionStateChange(state) {
@@ -473,6 +501,7 @@
                     s.includes("streaming")
                 );
 
+                updateConnectButton();
                 setStatus("Conexão: " + state);
             },
 
@@ -528,14 +557,32 @@
                 const a = await initAgent();
                 await a.connect();
                 isConnected = true;
+                updateConnectButton();
                 setStatus("Conectada com sucesso");
             } catch (err) {
                 console.error("Falha ao conectar:", err);
+                isConnected = false;
+                updateConnectButton();
                 setStatus("Falha técnica: " + (err?.message || "Erro de conexão"));
                 throw err;
             } finally {
                 isConnecting = false;
             }
+        }
+
+        async function disconnectAgent() {
+            try {
+                if (agent && typeof agent.disconnect === "function") {
+                    await agent.disconnect();
+                }
+            } catch (err) {
+                console.warn("Erro ao desligar agente:", err);
+            }
+
+            isConnected = false;
+            isSpeaking = false;
+            updateConnectButton();
+            setStatus("Angélica desligada");
         }
 
         async function reconnectAgentAfterSessionError() {
@@ -556,17 +603,30 @@
                 }
 
                 isConnected = false;
+                updateConnectButton();
+
                 await agent.connect();
+
                 isConnected = true;
+                updateConnectButton();
                 setStatus("Sessão restabelecida");
             } catch (err) {
                 console.error("Falha na reconexão:", err);
+                isConnected = false;
+                updateConnectButton();
                 setStatus("Erro ao reconectar a sessão");
                 throw err;
             }
         }
 
+        async function garantirConexaoSePrecisar() {
+            if (isConnected) return;
+            await connectAgent();
+        }
+
         async function falarResposta(texto) {
+            await garantirConexaoSePrecisar();
+
             if (!agent || !isConnected) {
                 throw new Error("Avatar não conectado. Clique em Ligar Angélica primeiro.");
             }
@@ -612,6 +672,8 @@
         async function enviarMensagem(message) {
             const text = (message || "").trim();
             if (!text || isSending) return;
+
+            await garantirConexaoSePrecisar();
 
             if (!agent || !isConnected) {
                 setStatus("Clique em Ligar Angélica antes de conversar");
@@ -660,12 +722,17 @@
                 addMessage("bot", "Desculpe, tive um problema agora.");
             } finally {
                 isSending = false;
+                isSpeaking = false;
             }
         }
 
         btnConnect.addEventListener("click", async () => {
             try {
-                await connectAgent();
+                if (isConnected) {
+                    await disconnectAgent();
+                } else {
+                    await connectAgent();
+                }
             } catch (err) {
                 console.error("Falha fatal:", err);
             }
@@ -678,6 +745,8 @@
                 setStatus("Seu navegador não suporta reconhecimento de voz");
                 return;
             }
+
+            await garantirConexaoSePrecisar();
 
             if (!agent || !isConnected) {
                 setStatus("Clique em Ligar Angélica antes de conversar");
@@ -704,6 +773,12 @@
                 setStatus("Erro no microfone: " + event.error);
             };
 
+            recognition.onend = () => {
+                if (!isSending && !isSpeaking) {
+                    setStatus("Pronta para a próxima pergunta");
+                }
+            };
+
             recognition.onresult = async (event) => {
                 const text = event.results[0][0].transcript;
                 await enviarMensagem(text);
@@ -728,6 +803,8 @@
             btnMute.textContent = isMuted ? "Som desligado" : "Som ligado";
             setStatus(isMuted ? "Modo silencioso ativado" : "Som ativado");
         });
+
+        updateConnectButton();
     </script>
 </body>
 </html>
